@@ -20,20 +20,20 @@ from dataclasses import dataclass
 
 @dataclass
 class TrainingConfig:
-    image_size = 128  # the generated image resolution
+    image_size = 256  # the generated image resolution
     train_batch_size = 8
     eval_batch_size = 4
-    num_epochs = 5
+    num_epochs = 25
     gradient_accumulation_steps = 1
     learning_rate = 1e-4
     lr_warmup_steps = 500
     save_image_epochs = 1
-    save_model_epochs = 1
+    save_model_epochs = 5
     mixed_precision = "fp16"  # `no` for float32, `fp16` for automatic mixed precision
     input_dir = "data/meth-pose/"
-    output_dir = "output/zizi-pose-128" 
+    output_dir = "output/zizi-pose-256" 
     overwrite_output_dir = True
-    seed = 46295
+    seed = 687
 
 config = TrainingConfig()
 
@@ -42,6 +42,7 @@ class ConditionalZiziDataset(Dataset):
         self.img_dir = input_dir + "test_img"
         self.pose_dir = input_dir + "test_openpose"
         self.img_files = os.listdir(self.img_dir)
+        self.img_files.sort()
         self.preprocess = transforms.Compose(
             [
                 transforms.Resize((config.image_size, config.image_size)),
@@ -167,7 +168,7 @@ def evaluate(config, epoch, pipeline, condition):
     ).images
 
     # Make a grid out of the images
-    image_grid = make_grid(images, rows=4, cols=4)
+    image_grid = make_grid(images, rows=2, cols=2)
 
     # Save the images
     test_dir = os.path.join(config.output_dir, "samples")
@@ -253,7 +254,7 @@ def train_loop(config):
                 evaluate(config, epoch, pipeline, dataset[0]["poses"].unsqueeze(0).to(accelerator.device))
 
             if (epoch + 1) % config.save_model_epochs == 0 or epoch == config.num_epochs - 1:
-                pipeline.save_pretrained(config.output_dir)
+                pipeline.save_pretrained(f"{config.output_dir}-{str(epoch)}")
 
 if __name__ == "__main__":
     train_loop(config)
