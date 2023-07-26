@@ -4,3 +4,5 @@ diffusers
 pillow
 accelerate
 matplotlib
+safetensors
+wandb
