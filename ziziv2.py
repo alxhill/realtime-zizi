@@ -58,7 +58,6 @@ class ConditionalZiziDataset(Dataset):
     def _get_img(self, idx):
         img_dir = os.path.join(self.img_dir, self.img_files[idx])
         with Image.open(img_dir) as img:
-            # img.thumbnail((self.image_size, self.image_size))
             return self.preprocess(img.convert("RGB"))
 
     def _get_json(self, idx):
