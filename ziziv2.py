@@ -20,32 +20,33 @@ from dataclasses import dataclass
 
 @dataclass
 class TrainingConfig:
-    image_size = 256  # the generated image resolution
-    train_batch_size = 8
+    image_size = 512  # the generated image resolution
+    train_batch_size = 4
     eval_batch_size = 4
-    num_epochs = 25
+    num_epochs = 50
     gradient_accumulation_steps = 1
     learning_rate = 1e-4
     lr_warmup_steps = 500
     save_image_epochs = 1
     save_model_epochs = 5
     mixed_precision = "fp16"  # `no` for float32, `fp16` for automatic mixed precision
-    input_dir = "data/meth-pose/"
-    output_dir = "output/zizi-pose-256" 
+    input_dir = "data/pink-me/"
+    output_dir = "output/zizi-pink-512"
     overwrite_output_dir = True
-    seed = 687
+    seed = 56738
 
 config = TrainingConfig()
 
 class ConditionalZiziDataset(Dataset):
-    def __init__(self, input_dir):
-        self.img_dir = input_dir + "test_img"
-        self.pose_dir = input_dir + "test_openpose"
+    def __init__(self, input_dir, image_size):
+        self.img_dir = input_dir + "train_img"
+        self.pose_dir = input_dir + "train_openpose"
         self.img_files = os.listdir(self.img_dir)
         self.img_files.sort()
+        self.image_size = image_size
         self.preprocess = transforms.Compose(
             [
-                transforms.Resize((config.image_size, config.image_size)),
+                transforms.Resize((image_size, image_size)),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5])
             ]
@@ -56,7 +57,9 @@ class ConditionalZiziDataset(Dataset):
 
     def _get_img(self, idx):
         img_dir = os.path.join(self.img_dir, self.img_files[idx])
-        return self.preprocess(Image.open(img_dir).convert("RGB"))
+        with Image.open(img_dir) as img:
+            # img.thumbnail((self.image_size, self.image_size))
+            return self.preprocess(img.convert("RGB"))
 
     def _get_json(self, idx):
         input_split = os.path.splitext(self.img_files[idx])
@@ -115,7 +118,7 @@ class ZiziPipeline(DiffusionPipeline):
         return ImagePipelineOutput(images=image)
 
 def get_dataset():
-    return ConditionalZiziDataset(config.input_dir)
+    return ConditionalZiziDataset(config.input_dir, config.image_size)
 
 def get_dataloader(dataset):
     return torch.utils.data.DataLoader(dataset, batch_size=config.train_batch_size, shuffle=True)
