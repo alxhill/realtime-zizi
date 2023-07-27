@@ -8,3 +8,4 @@ data/*
 output/*
 !output/.gitkeep
 trained-models/
+.vscode/

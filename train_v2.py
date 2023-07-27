@@ -6,16 +6,25 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
 from PIL import Image
-from diffusers.optimization import get_cosine_schedule_with_warmup
 
 from accelerate import Accelerator
 from tqdm.auto import tqdm
 from pathlib import Path
 from dataclasses import dataclass
 
-from zizi_pipeline import ZiziPipeline, ConditionalZiziDataset, TrainingConfig, get_unet, get_ddpm, get_adamw, get_lr_scheduler, get_dataloader
+from zizi_pipeline import (
+    ZiziPipeline,
+    ConditionalZiziDataset,
+    TrainingConfig,
+    get_unet,
+    get_ddpm,
+    get_adamw,
+    get_lr_scheduler,
+    get_dataloader,
+)
 
-config = TrainingConfig("data/pink-me/")
+config = TrainingConfig("data/pink-me/", "output/pink-me-512-test/")
+
 
 def make_grid(images, rows, cols):
     w, h = images[0].size
@@ -24,14 +33,17 @@ def make_grid(images, rows, cols):
         grid.paste(image, box=(i % cols * w, i // cols * h))
     return grid
 
-def evaluate(config: TrainingConfig, epoch, pipeline: ZiziPipeline, condition: torch.FloatTensor):
+
+def evaluate(
+    config: TrainingConfig, epoch, pipeline: ZiziPipeline, condition: torch.FloatTensor
+):
     # Sample some images from random noise (this is the backward diffusion process).
     # The default pipeline output type is `List[PIL.Image]`
     images = pipeline(
         condition,
         batch_size=config.eval_batch_size,
         generator=torch.manual_seed(config.seed),
-        num_inference_steps=50
+        num_inference_steps=50,
     ).images
 
     # Make a grid out of the images
@@ -41,6 +53,7 @@ def evaluate(config: TrainingConfig, epoch, pipeline: ZiziPipeline, condition: t
     test_dir = os.path.join(config.output_dir, "samples")
     os.makedirs(test_dir, exist_ok=True)
     image_grid.save(f"{test_dir}/{epoch:04d}.png")
+
 
 def train_loop(config):
     # Initialize accelerator
@@ -55,7 +68,7 @@ def train_loop(config):
 
     train_dataloader = get_dataloader(config)
 
-    model = get_unet()
+    model = get_unet(config)
     noise_scheduler = get_ddpm()
     optimizer = get_adamw(config, model)
     lr_scheduler = get_lr_scheduler(config, optimizer, train_dataloader)
@@ -71,7 +84,9 @@ def train_loop(config):
 
     # Now you train the model
     for epoch in range(config.num_epochs):
-        progress_bar = tqdm(total=len(train_dataloader), disable=not accelerator.is_local_main_process)
+        progress_bar = tqdm(
+            total=len(train_dataloader), disable=not accelerator.is_local_main_process
+        )
         progress_bar.set_description(f"Epoch {epoch}")
 
         for step, batch in enumerate(train_dataloader):
@@ -82,7 +97,10 @@ def train_loop(config):
 
             # Sample a random timestep for each image
             timesteps = torch.randint(
-                0, noise_scheduler.config.num_train_timesteps, (bs,), device=clean_images.device
+                0,
+                noise_scheduler.config.num_train_timesteps,
+                (bs,),
+                device=clean_images.device,
             ).long()
 
             # Add noise to the clean images according to the noise magnitude at each timestep
@@ -90,7 +108,7 @@ def train_loop(config):
             noisy_images = noise_scheduler.add_noise(clean_images, noise, timesteps)
 
             poses = batch["poses"].reshape((bs, 1, 75))
-            
+
             with accelerator.accumulate(model):
                 # Predict the noise residual
                 noise_pred = model(noisy_images, timesteps, poses, return_dict=False)[0]
@@ -103,20 +121,39 @@ def train_loop(config):
                 optimizer.zero_grad()
 
             progress_bar.update(1)
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
+            logs = {
+                "loss": loss.detach().item(),
+                "lr": lr_scheduler.get_last_lr()[0],
+                "step": global_step,
+            }
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
             global_step += 1
 
         # After each epoch you optionally sample some demo images with evaluate() and save the model
         if accelerator.is_main_process:
-            pipeline = ZiziPipeline(unet_conditional=accelerator.unwrap_model(model), scheduler=noise_scheduler).to(accelerator.device)
+            pipeline = ZiziPipeline(
+                unet_conditional=accelerator.unwrap_model(model),
+                scheduler=noise_scheduler,
+            ).to(accelerator.device)
 
-            if (epoch + 1) % config.save_image_epochs == 0 or epoch == config.num_epochs - 1:
-                evaluate(config, epoch, pipeline, train_dataloader.dataset[0]["poses"].unsqueeze(0).to(accelerator.device))
+            if (
+                epoch + 1
+            ) % config.save_image_epochs == 0 or epoch == config.num_epochs - 1:
+                evaluate(
+                    config,
+                    epoch,
+                    pipeline,
+                    train_dataloader.dataset[0]["poses"]
+                    .unsqueeze(0)
+                    .to(accelerator.device),
+                )
 
-            if (epoch + 1) % config.save_model_epochs == 0 or epoch == config.num_epochs - 1:
+            if (
+                epoch + 1
+            ) % config.save_model_epochs == 0 or epoch == config.num_epochs - 1:
                 pipeline.save_pretrained(f"{config.output_dir}/checkpoint-{str(epoch)}")
+
 
 if __name__ == "__main__":
     train_loop(config)
