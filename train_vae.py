@@ -143,21 +143,6 @@ def train_loop(config, vae):
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
             global_step += 1
-            pipeline = ZiziVaePipeline(
-                vae=vae,
-                unet_cond=accelerator.unwrap_model(model),
-                scheduler=noise_scheduler,
-            ).to(accelerator.device)
-
-            
-            evaluate(
-                    config,
-                    epoch,
-                    pipeline,
-                    train_dataloader.dataset[0]["poses"]
-                    .unsqueeze(0)
-                    .to(accelerator.device),
-                )
 
         # After each epoch you optionally sample some demo images with evaluate() and save the model
         if accelerator.is_main_process:
