@@ -122,7 +122,7 @@ def get_dataset():
 def get_dataloader(dataset):
     return torch.utils.data.DataLoader(dataset, batch_size=config.train_batch_size, shuffle=True)
 
-def get_model():
+def get_model(config: TrainingConfig):
     return UNet2DConditionModel(
         sample_size=config.image_size,  # the target image resolution
         in_channels=3,  # the number of input channels, 3 for RGB images
