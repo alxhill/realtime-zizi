@@ -1,22 +1,16 @@
-import math
 import os
-import json
 import torch
 import wandb
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
 
 from PIL import Image
 
 from accelerate import Accelerator
 from tqdm.auto import tqdm
-from pathlib import Path
-from dataclasses import dataclass
 
 from diffusers import AutoencoderKL
 
 from zizi_pipeline import (
-    ConditionalZiziDataset,
     TrainingConfig,
     get_ddpm,
     get_adamw,
@@ -25,10 +19,15 @@ from zizi_pipeline import (
 )
 from zizi_vae_pipeline import ZiziVaePipeline, get_vae_unet
 
-config = TrainingConfig("data/pink-me/", "output/pink-me-vae-128/", image_size=128, train_batch_size=16)
+config = TrainingConfig(
+    "data/pink-me/", "output/pink-me-vae-128/", image_size=256, train_batch_size=32
+)
 
-vae = AutoencoderKL.from_pretrained("stabilityai/stable-diffusion-2-1", subfolder="vae")
-vae.config.sample_size = 512
+
+def get_pretrained_vae():
+    vae = AutoencoderKL("stabilityai/stable-diffusion-2-1", subfolder="vae")
+    vae.config.sample_size = 512
+
 
 def make_grid(images, rows, cols):
     w, h = images[0].size
@@ -38,9 +37,7 @@ def make_grid(images, rows, cols):
     return grid
 
 
-def evaluate(
-    config: TrainingConfig, epoch, pipeline, condition: torch.FloatTensor
-):
+def evaluate(config: TrainingConfig, epoch, pipeline, condition: torch.FloatTensor):
     # Sample some images from random noise (this is the backward diffusion process).
     # The default pipeline output type is `List[PIL.Image]`
     images = pipeline(
@@ -60,8 +57,8 @@ def evaluate(
     os.makedirs(test_dir, exist_ok=True)
     image_grid.save(f"{test_dir}/{epoch:04d}.png")
 
+
 def train_loop(config, vae):
-    from accelerate import Accelerator
     # Initialize accelerator
     accelerator = Accelerator(
         log_with="wandb",
@@ -104,7 +101,7 @@ def train_loop(config, vae):
                 latent = vae.encode(clean_images)
 
             latent_vector = latent.latent_dist.sample() * vae.config.scaling_factor
-            
+
             # Sample noise to add to the latents
             noise = torch.randn(latent_vector.shape).to(accelerator.device)
             bs = clean_images.shape[0]
@@ -125,7 +122,9 @@ def train_loop(config, vae):
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-                noise_pred = model(noisy_latents, timesteps, poses, return_dict=False)[0]
+                noise_pred = model(noisy_latents, timesteps, poses, return_dict=False)[
+                    0
+                ]
                 loss = F.mse_loss(noise_pred, noise)
                 accelerator.backward(loss)
 
@@ -169,5 +168,6 @@ def train_loop(config, vae):
             ) % config.save_model_epochs == 0 or epoch == config.num_epochs - 1:
                 pipeline.save_pretrained(f"{config.output_dir}/checkpoint-{str(epoch)}")
 
+
 if __name__ == "__main__":
-    train_loop(config, vae)
+    train_loop(config, get_pretrained_vae())

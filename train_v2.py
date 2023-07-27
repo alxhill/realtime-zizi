@@ -1,22 +1,15 @@
-import math
 import os
-import json
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
 from PIL import Image
 
-from diffusers import AutoencoderKL
-
 from accelerate import Accelerator
 from tqdm.auto import tqdm
-from pathlib import Path
-from dataclasses import dataclass
 
 from zizi_pipeline import (
     ZiziPipeline,
-    ConditionalZiziDataset,
     TrainingConfig,
     get_unet,
     get_ddpm,
@@ -25,12 +18,7 @@ from zizi_pipeline import (
     get_dataloader,
 )
 
-vae_dir = "/Users/alxhill/dev/ai/pretrained/v1-5-diffusers/vae"
-
 config = TrainingConfig("data/pink-me/", "output/pink-me-vae-512/")
-
-def get_pretrained_vae():
-    return 
 
 
 def make_grid(images, rows, cols):
