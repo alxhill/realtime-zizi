@@ -50,7 +50,7 @@ def evaluate(
         num_inference_steps=50,
     ).images
 
-    wandb.log({"examples": images})
+    wandb.log({"examples": [wandb.Image(img) for img in images]})
 
     # Make a grid out of the images
     image_grid = make_grid(images, rows=2, cols=2)
