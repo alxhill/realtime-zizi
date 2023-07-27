@@ -7,8 +7,6 @@ from torch.utils.data import Dataset, DataLoader
 
 from PIL import Image
 
-from diffusers import AutoencoderKL
-
 from accelerate import Accelerator
 from tqdm.auto import tqdm
 from pathlib import Path
@@ -25,12 +23,7 @@ from zizi_pipeline import (
     get_dataloader,
 )
 
-vae_dir = "/Users/alxhill/dev/ai/pretrained/v1-5-diffusers/vae"
-
-config = TrainingConfig("data/pink-me/", "output/pink-me-vae-512/")
-
-def get_pretrained_vae():
-    return 
+config = TrainingConfig("data/pink-me/", "output/pink-me-512-test/")
 
 
 def make_grid(images, rows, cols):

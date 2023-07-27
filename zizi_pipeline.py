@@ -17,20 +17,21 @@ from dataclasses import dataclass
 
 @dataclass
 class TrainingConfig:
-    image_size = 512  # the generated image resolution
-    train_batch_size = 4
-    eval_batch_size = 4
-    num_epochs = 50
-    gradient_accumulation_steps = 1
-    learning_rate = 1e-4
-    lr_warmup_steps = 500
-    save_image_epochs = 1
-    save_model_epochs = 5
-    mixed_precision = "fp16"  # `no` for float32, `fp16` for automatic mixed precision
-    overwrite_output_dir = True
-    seed = 56738
     input_dir: str
     output_dir: str
+    image_size: int = 512  # the generated image resolution
+    train_batch_size: int = 4
+    eval_batch_size: int = 4
+    num_epochs: int = 50
+    gradient_accumulation_steps: int = 1
+    learning_rate: float = 1e-4
+    lr_warmup_steps: int = 500
+    save_image_epochs: int = 1
+    save_model_epochs: int = 5
+    mixed_precision: str = "fp16"  # `no` for float32, `fp16` for automatic mixed precision
+    overwrite_output_dir: bool = True
+    seed: int = 56738
+    
 
 class ConditionalZiziDataset(Dataset):
     def __init__(self, input_dir, image_size, img_dir_name="train_img", pose_dir_name="train_openpose"):
@@ -119,6 +120,33 @@ def get_unet(config: TrainingConfig):
         sample_size=config.image_size,  # the target image resolution
         in_channels=3,  # the number of input channels, 3 for RGB images
         out_channels=3,  # the number of output channels
+        layers_per_block=2,  # how many ResNet layers to use per UNet block
+        encoder_hid_dim=75,
+        cross_attention_dim=512,
+        block_out_channels=(128, 128, 256, 256, 512, 512),  # the number of output channels for each UNet block
+        down_block_types=(
+            "DownBlock2D",  # a regular ResNet downsampling block
+            "DownBlock2D",
+            "DownBlock2D",
+            "DownBlock2D",
+            "AttnDownBlock2D",  # a ResNet downsampling block with spatial self-attention
+            "DownBlock2D",
+        ),
+        up_block_types=(
+            "UpBlock2D",  # a regular ResNet upsampling block
+            "AttnUpBlock2D",  # a ResNet upsampling block with spatial self-attention
+            "UpBlock2D",
+            "UpBlock2D",
+            "UpBlock2D",
+            "UpBlock2D",
+        ),
+    )
+
+def get_vae_unet(config: TrainingConfig):
+    return UNet2DConditionModel(
+        sample_size=config.image_size,  # the target image resolution
+        in_channels=4,  # the number of input channels, 3 for RGB images
+        out_channels=4,  # the number of output channels
         layers_per_block=2,  # how many ResNet layers to use per UNet block
         encoder_hid_dim=75,
         cross_attention_dim=512,
