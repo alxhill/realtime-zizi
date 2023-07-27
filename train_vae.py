@@ -24,7 +24,7 @@ from zizi_pipeline import (
 )
 from zizi_vae_pipeline import ZiziVaePipeline, get_vae_unet
 
-config = TrainingConfig("data/pink-me/", "output/pink-me-vae-512/", image_size=512)
+config = TrainingConfig("data/pink-me/", "output/pink-me-vae-128/", image_size=128, train_batch_size=16)
 
 vae = AutoencoderKL.from_pretrained("stabilityai/stable-diffusion-2-1", subfolder="vae")
 vae.config.sample_size = 512
