@@ -9,3 +9,4 @@ output/*
 !output/.gitkeep
 trained-models/
 .vscode/
+wandb/

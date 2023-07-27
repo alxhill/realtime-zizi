@@ -2,6 +2,7 @@ import math
 import os
 import json
 import torch
+import wandb
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
@@ -49,6 +50,8 @@ def evaluate(
         num_inference_steps=50,
     ).images
 
+    wandb.log({"examples": images})
+
     # Make a grid out of the images
     image_grid = make_grid(images, rows=2, cols=2)
 
@@ -61,13 +64,14 @@ def train_loop(config, vae):
     from accelerate import Accelerator
     # Initialize accelerator
     accelerator = Accelerator(
+        log_with="wandb",
         mixed_precision=config.mixed_precision,
         gradient_accumulation_steps=config.gradient_accumulation_steps,
         project_dir=os.path.join(config.output_dir, "logs"),
     )
     if accelerator.is_main_process:
         os.makedirs(config.output_dir, exist_ok=True)
-        accelerator.init_trackers("train_example")
+        accelerator.init_trackers(project_name="train_example", config=config)
 
     train_dataloader = get_dataloader(config)
 
@@ -139,11 +143,27 @@ def train_loop(config, vae):
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
             global_step += 1
+            pipeline = ZiziVaePipeline(
+                vae=vae,
+                unet_cond=accelerator.unwrap_model(model),
+                scheduler=noise_scheduler,
+            ).to(accelerator.device)
+
+            
+            evaluate(
+                    config,
+                    epoch,
+                    pipeline,
+                    train_dataloader.dataset[0]["poses"]
+                    .unsqueeze(0)
+                    .to(accelerator.device),
+                )
 
         # After each epoch you optionally sample some demo images with evaluate() and save the model
         if accelerator.is_main_process:
-            pipeline = ZiziPipeline(
-                unet_conditional=accelerator.unwrap_model(model),
+            pipeline = ZiziVaePipeline(
+                vae=vae,
+                unet_cond=accelerator.unwrap_model(model),
                 scheduler=noise_scheduler,
             ).to(accelerator.device)
 

@@ -43,8 +43,6 @@ class ZiziVaePipeline(DiffusionPipeline):
                 self.unet_cond.config.sample_size,
                 self.unet_cond.config.sample_size,
             )
-
-        print(f"latent input shape: {latent_shape}")
         
         latent = randn_tensor(latent_shape, generator=generator, device=self.device)
 
@@ -55,8 +53,6 @@ class ZiziVaePipeline(DiffusionPipeline):
         for t in self.progress_bar(self.scheduler.timesteps):
             latent_noise = self.unet_cond(latent, t, condition).sample
             latent = self.scheduler.step(latent_noise, t, latent, generator=generator).prev_sample
-
-        print(f"latent output shape: {latent.shape}")
 
         latent = (1 / self.vae.config.scaling_factor) * latent
         with torch.no_grad():
