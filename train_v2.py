@@ -5,20 +5,15 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
-from torchvision import transforms
 from PIL import Image
-from diffusers import DDPMScheduler
-from diffusers import DiffusionPipeline, ImagePipelineOutput
 from diffusers.optimization import get_cosine_schedule_with_warmup
-from diffusers.utils.torch_utils import randn_tensor
-from diffusers import UNet2DConditionModel
 
 from accelerate import Accelerator
 from tqdm.auto import tqdm
 from pathlib import Path
 from dataclasses import dataclass
 
-from zizi_pipeline import ZiziPipeline, ConditionalZiziDataset, TrainingConfig, get_unet, get_ddpm, get_adamw, get_lr_scheduler
+from zizi_pipeline import ZiziPipeline, ConditionalZiziDataset, TrainingConfig, get_unet, get_ddpm, get_adamw, get_lr_scheduler, get_dataloader
 
 config = TrainingConfig("data/pink-me/")
 
@@ -58,17 +53,12 @@ def train_loop(config):
         os.makedirs(config.output_dir, exist_ok=True)
         accelerator.init_trackers("train_example")
 
-    dataset = get_dataset()
-    train_dataloader = get_dataloader(dataset)
+    train_dataloader = get_dataloader(config)
 
-    model = get_model()
-    noise_scheduler = get_scheduler()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
-    lr_scheduler = get_cosine_schedule_with_warmup(
-        optimizer=optimizer,
-        num_warmup_steps=config.lr_warmup_steps,
-        num_training_steps=(len(train_dataloader) * config.num_epochs),
-    )
+    model = get_unet()
+    noise_scheduler = get_ddpm()
+    optimizer = get_adamw(config, model)
+    lr_scheduler = get_lr_scheduler(config, optimizer, train_dataloader)
 
     # Prepare everything
     # There is no specific order to remember, you just need to unpack the
