@@ -25,8 +25,11 @@ config = TrainingConfig(
 
 
 def get_pretrained_vae():
-    vae = AutoencoderKL("stabilityai/stable-diffusion-2-1", subfolder="vae")
+    vae = AutoencoderKL.from_pretrained(
+        "stabilityai/stable-diffusion-2-1", subfolder="vae"
+    )
     vae.config.sample_size = 512
+    return vae
 
 
 def make_grid(images, rows, cols):
