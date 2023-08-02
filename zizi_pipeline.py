@@ -157,5 +157,5 @@ def get_lr_scheduler(config: TrainingConfig, optimizer, dataloader):
 
 def get_dataloader(config: TrainingConfig):
     dataset = ConditionalZiziDataset(config.input_dir, config.image_size)
-    return torch.utils.data.DataLoader(dataset, batch_size=config.train_batch_size, shuffle=True)
+    return DataLoader(dataset, batch_size=config.train_batch_size, shuffle=True)
 
