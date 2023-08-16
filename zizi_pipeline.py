@@ -83,7 +83,7 @@ class ConditionalZiziDataset(Dataset):
 class ZiziPipeline(DiffusionPipeline):
     def __init__(self, unet_cond: UNet2DConditionModel, scheduler: DDPMScheduler):
         super().__init__()
-        self.register_modules(unet_cond=unet_cond, scheduler=scheduler, vae=vae)
+        self.register_modules(unet_cond=unet_cond, scheduler=scheduler)
     
     @torch.no_grad()
     def __call__(
@@ -139,6 +139,29 @@ def get_unet(config: TrainingConfig):
             "UpBlock2D",
             "UpBlock2D",
             "UpBlock2D",
+        ),
+    )
+
+def get_unet_crossattn(config: TrainingConfig):
+    return UNet2DConditionModel(
+        sample_size=config.image_size,  # the target image resolution
+        in_channels=3,  # the number of input channels, 3 for RGB images
+        out_channels=3,  # the number of output channels
+        layers_per_block=2,  # how many ResNet layers to use per UNet block
+        encoder_hid_dim=75,
+        cross_attention_dim=512,
+        block_out_channels=(128, 256, 512, 512),  # the number of output channels for each UNet block
+        down_block_types=(
+            "CrossAttnDownBlock2D",
+            "CrossAttnDownBlock2D",
+            "CrossAttnDownBlock2D",
+            "DownBlock2D",
+        ),
+        up_block_types=(
+            "UpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
         ),
     )
 

@@ -1,26 +1,44 @@
 import os
 import torch
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, Subset
 
 from PIL import Image
 
 from accelerate import Accelerator
 from tqdm.auto import tqdm
 
+from diffusers.optimization import get_constant_schedule
+
+from utils import make_grid
 from zizi_pipeline import (
     ZiziPipeline,
     TrainingConfig,
     get_unet,
     get_ddpm,
     get_adamw,
-    get_lr_scheduler,
+    # get_lr_scheduler,
     get_dataloader,
 )
 
-from utils import make_grid
 
-config = TrainingConfig("data/pink-me/", "output/pink-me-vae-512/", image_size=128, train_batch_size=16)
+config = TrainingConfig(
+    "data/pink-me/",
+    "output/pink-me-small-128/",
+    image_size=128,
+    train_batch_size=16,
+    num_epochs=100,
+    save_image_epochs=5,
+    save_model_epochs=50
+)
+
+def get_fixed_lr_schedule(optimizer):
+    return get_constant_schedule(optimizer)
+
+
+def get_subset_dataloader(config, dataloader, img_count=100):
+    subset = Subset(dataloader.dataset, range(img_count))
+    return DataLoader(subset, batch_size=config.train_batch_size, shuffle=True)
 
 
 def evaluate(
@@ -47,20 +65,21 @@ def evaluate(
 def train_loop(config):
     # Initialize accelerator
     accelerator = Accelerator(
+        # log_with="wandb",
         mixed_precision=config.mixed_precision,
         gradient_accumulation_steps=config.gradient_accumulation_steps,
         project_dir=os.path.join(config.output_dir, "logs"),
     )
     if accelerator.is_main_process:
         os.makedirs(config.output_dir, exist_ok=True)
-        accelerator.init_trackers("train_example")
+        accelerator.init_trackers("pink-me-small")
 
-    train_dataloader = get_dataloader(config)
+    train_dataloader = get_subset_dataloader(config, get_dataloader(config))
 
     model = get_unet(config)
     noise_scheduler = get_ddpm()
     optimizer = get_adamw(config, model)
-    lr_scheduler = get_lr_scheduler(config, optimizer, train_dataloader)
+    lr_scheduler = get_fixed_lr_schedule(optimizer)
 
     # Prepare everything
     # There is no specific order to remember, you just need to unpack the
@@ -122,7 +141,7 @@ def train_loop(config):
         # After each epoch you optionally sample some demo images with evaluate() and save the model
         if accelerator.is_main_process:
             pipeline = ZiziPipeline(
-                unet_conditional=accelerator.unwrap_model(model),
+                unet_cond=accelerator.unwrap_model(model),
                 scheduler=noise_scheduler,
             ).to(accelerator.device)
 
