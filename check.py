@@ -45,6 +45,13 @@ def json_structure(json_obj):
     else:
         return None
 
+def copy_if_present(src, dest):
+    """
+    Copies a file if it exists.
+    """
+    if os.path.exists(src):
+        shutil.copy2(src, dest)
+
 def gather_mismatched_images(mismatched_files, base_dir):
     """
     Gathers the mismatched images into a new directory.
@@ -55,9 +62,11 @@ def gather_mismatched_images(mismatched_files, base_dir):
     for file_number in mismatched_files:
         orig_img = os.path.join(base_dir, "..", "train_img", f"{file_number}.jpg")
         rendered_img = os.path.join(base_dir, "..", "train_openpose_img", f"{file_number}_rendered.jpg")
+        json_file = os.path.join(base_dir, "..", "train_openpose", f"{file_number}_keypoints.json")
 
-        shutil.copy2(orig_img, dest_dir)
-        shutil.copy2(rendered_img, dest_dir)
+        copy_if_present(orig_img, dest_dir)
+        copy_if_present(rendered_img, dest_dir)
+        copy_if_present(json_file, dest_dir)
 
 def compare_jsons(dir_path):
     """
