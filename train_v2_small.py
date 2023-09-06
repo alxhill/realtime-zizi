@@ -15,6 +15,7 @@ from zizi_pipeline import (
     ZiziPipeline,
     TrainingConfig,
     get_unet,
+    # get_unet_crossattn,
     get_ddpm,
     get_adamw,
     # get_lr_scheduler,
@@ -24,9 +25,9 @@ from zizi_pipeline import (
 
 config = TrainingConfig(
     "data/pink-me/",
-    "output/pink-me-small-128/",
+    "output/pink-me-small-cross-128/",
     image_size=128,
-    train_batch_size=16,
+    train_batch_size=8,
     num_epochs=100,
     save_image_epochs=5,
     save_model_epochs=50
@@ -76,7 +77,7 @@ def train_loop(config):
 
     train_dataloader = get_subset_dataloader(config, get_dataloader(config))
 
-    model = get_unet(config)
+    model = get_unet_crossattn(config)
     noise_scheduler = get_ddpm()
     optimizer = get_adamw(config, model)
     lr_scheduler = get_fixed_lr_schedule(optimizer)

@@ -142,7 +142,12 @@ def get_unet(config: TrainingConfig):
         ),
     )
 
+
 def get_unet_crossattn(config: TrainingConfig):
+    """
+    UNet with cross attn blocks instead of just self attn blocks.
+    Does not seem to work with the config below (loss stays at 1).
+    """
     return UNet2DConditionModel(
         sample_size=config.image_size,  # the target image resolution
         in_channels=3,  # the number of input channels, 3 for RGB images
@@ -152,16 +157,16 @@ def get_unet_crossattn(config: TrainingConfig):
         cross_attention_dim=512,
         block_out_channels=(128, 256, 512, 512),  # the number of output channels for each UNet block
         down_block_types=(
-            "CrossAttnDownBlock2D",
-            "CrossAttnDownBlock2D",
+            "DownBlock2D",
+            "DownBlock2D",
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
         up_block_types=(
             "UpBlock2D",
             "CrossAttnUpBlock2D",
-            "CrossAttnUpBlock2D",
-            "CrossAttnUpBlock2D",
+            "UpBlock2D",
+            "UpBlock2D",
         ),
     )
 
