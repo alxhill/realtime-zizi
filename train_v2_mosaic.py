@@ -25,7 +25,7 @@ from zizi_pipeline import (
 
 from utils import make_grid
 
-config = TrainingConfig("data/pink-me/", "output/pink-full-pose-256/", image_size=256, train_batch_size=2)
+config = TrainingConfig("data/pink-me/", "output/pink-full-pose-256/", image_size=256, train_batch_size=4)
 
 class ComposerUnet(ComposerModel):
     def __init__(self, unet, noise_scheduler):
@@ -85,7 +85,7 @@ def evaluate(
 def get_trainer(config: TrainingConfig):
     model = get_unet(config)
     optim = get_adamw(config, model)
-    dataloader = get_subset_dataloader(config, 128)
+    dataloader = get_subset_dataloader(config, 64)
     noise_scheduler = get_ddpm()
     return Trainer(
         model=ComposerUnet(model, noise_scheduler),
@@ -93,7 +93,9 @@ def get_trainer(config: TrainingConfig):
         # eval_dataloader=eval_dataloader,
         optimizers=optim,
         max_duration=config.num_epochs,
-        device='mps'
+        device='mps',
+        save_folder=config.output_dir,
+        save_interval='1ep',
     )
 
 if __name__ == "__main__":
