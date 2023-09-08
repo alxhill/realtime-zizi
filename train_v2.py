@@ -96,7 +96,7 @@ def train_loop(config):
             # (this is the forward diffusion process)
             noisy_images = noise_scheduler.add_noise(clean_images, noise, timesteps)
 
-            poses = batch["poses"].reshape((bs, 1, 75))
+            poses = batch["poses"].reshape((bs, 1, 411))
 
             with accelerator.accumulate(model):
                 # Predict the noise residual

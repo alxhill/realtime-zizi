@@ -71,7 +71,7 @@ def train_loop(config, vae):
     )
     if accelerator.is_main_process:
         os.makedirs(config.output_dir, exist_ok=True)
-        accelerator.init_trackers(project_name="train_example", config=config)
+        accelerator.init_trackers(project_name="train_vae", config=config)
 
     train_dataloader = get_dataloader(config)
 

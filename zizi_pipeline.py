@@ -3,7 +3,7 @@ import os
 import json
 import torch
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, Subset
 
 from torchvision import transforms
 from PIL import Image
@@ -34,6 +34,8 @@ class TrainingConfig:
 
 
 class ConditionalZiziDataset(Dataset):
+    pose_keys = ("pose_keypoints_2d", "face_keypoints_2d", "hand_left_keypoints_2d", "hand_right_keypoints_2d")
+    
     def __init__(self, input_dir, image_size, img_dir_name="train_img", pose_dir_name="train_openpose"):
         self.img_dir = input_dir + img_dir_name
         self.pose_dir = input_dir + pose_dir_name
@@ -64,8 +66,9 @@ class ConditionalZiziDataset(Dataset):
         pose_json_name = input_split[0] + "_keypoints.json"
         json_dir = os.path.join(self.pose_dir, pose_json_name)
         with open(json_dir, 'r') as f:
-            data = json.load(f)
-        return torch.tensor(data['people'][0]['pose_keypoints_2d'])
+            pose_data = json.load(f)
+        pose_points = [points for key in self.pose_keys for points in pose_data['people'][-1][key]]
+        return torch.tensor(pose_points)
     
     def __getitem__(self, idx):
         if isinstance(idx, slice):
@@ -79,6 +82,7 @@ class ConditionalZiziDataset(Dataset):
             "images": input_img,
             "poses": json_data
         }
+
 
 class ZiziPipeline(DiffusionPipeline):
     def __init__(self, unet_cond: UNet2DConditionModel, scheduler: DDPMScheduler):
@@ -121,7 +125,7 @@ def get_unet(config: TrainingConfig):
         in_channels=3,  # the number of input channels, 3 for RGB images
         out_channels=3,  # the number of output channels
         layers_per_block=2,  # how many ResNet layers to use per UNet block
-        encoder_hid_dim=75,
+        encoder_hid_dim=411,
         cross_attention_dim=512,
         block_out_channels=(128, 128, 256, 256, 512, 512),  # the number of output channels for each UNet block
         down_block_types=(
@@ -153,7 +157,7 @@ def get_unet_crossattn(config: TrainingConfig):
         in_channels=3,  # the number of input channels, 3 for RGB images
         out_channels=3,  # the number of output channels
         layers_per_block=2,  # how many ResNet layers to use per UNet block
-        encoder_hid_dim=75,
+        encoder_hid_dim=411,
         cross_attention_dim=512,
         block_out_channels=(128, 256, 512, 512),  # the number of output channels for each UNet block
         down_block_types=(
@@ -187,3 +191,6 @@ def get_dataloader(config: TrainingConfig):
     dataset = ConditionalZiziDataset(config.input_dir, config.image_size)
     return DataLoader(dataset, batch_size=config.train_batch_size, shuffle=True)
 
+def get_subset_dataloader(config: TrainingConfig, count=8):
+    dataset = ConditionalZiziDataset(config.input_dir, config.image_size)
+    return DataLoader(Subset(dataset, range(0,count)), batch_size=config.train_batch_size, shuffle=True)

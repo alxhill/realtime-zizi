@@ -6,3 +6,4 @@ accelerate
 matplotlib
 safetensors
 wandb
+mosaicml
