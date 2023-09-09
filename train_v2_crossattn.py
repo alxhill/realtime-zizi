@@ -29,7 +29,7 @@ config = TrainingConfig(
     "data/pink-cape-me/",
     "output/pink-me-cross-attn-128/",
     image_size=128,
-    train_batch_size=16,
+    train_batch_size=8,
     save_model_epochs=10,
     lr_warmup_steps=0,
     num_epochs=100,
@@ -74,9 +74,6 @@ def train_loop(config, checkpoint_dir=None, epoch_offset=0):
         gradient_accumulation_steps=config.gradient_accumulation_steps,
         project_dir=os.path.join(config.output_dir, "logs"),
     )
-    if accelerator.is_main_process:
-        os.makedirs(config.output_dir, exist_ok=True)
-        accelerator.init_trackers("zizi-pink-full-pose")
 
     train_dataloader = get_dataloader(config)
 
@@ -98,6 +95,10 @@ def train_loop(config, checkpoint_dir=None, epoch_offset=0):
     )
 
     global_step = 0
+
+    if accelerator.is_main_process:
+        os.makedirs(config.output_dir, exist_ok=True)
+        accelerator.init_trackers("zizi-pink-full-pose")
 
     # Now you train the model
     for raw_epoch in range(config.num_epochs):

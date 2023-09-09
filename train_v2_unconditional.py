@@ -10,17 +10,7 @@ from diffusers import DDPMPipeline
 from accelerate import Accelerator
 from tqdm.auto import tqdm
 
-from zizi_pipeline import (
-    ZiziPipeline,
-    TrainingConfig,
-    get_unet,
-    get_unet_crossattn,
-    get_ddpm,
-    get_adamw,
-    get_lr_scheduler,
-    get_dataloader,
-    get_subset_dataloader,
-)
+from zizi_pipeline import *
 
 from utils import make_grid
 
@@ -28,11 +18,12 @@ config = TrainingConfig(
     "data/pink-me/",
     "output/pink-256-unconditional/",
     image_size=256,
-    train_batch_size=16,
-    save_model_epochs=10,
+    train_batch_size=8,
+    save_model_epochs=100,
     lr_warmup_steps=0,
-    num_epochs=50,
-    save_image_epochs=1,
+    num_epochs=200,
+    save_image_epochs=5,
+    mixed_precision="no",
 )
 
 
@@ -64,17 +55,13 @@ def train_loop(config):
         gradient_accumulation_steps=config.gradient_accumulation_steps,
         project_dir=os.path.join(config.output_dir, "logs"),
     )
-    print("started accel")
-    if accelerator.is_main_process:
-        os.makedirs(config.output_dir, exist_ok=True)
-        accelerator.init_trackers("zizi-pink-uncond")
 
-    train_dataloader = get_dataloader(config)
+    train_dataloader = get_subset_dataloader(config, 16)
 
     model = get_unet_uncond(config)
     noise_scheduler = get_ddpm()
     optimizer = get_adamw(config, model)
-    lr_scheduler = get_const_lr(config, optimizer, train_dataloader)
+    lr_scheduler = get_const_lr(config, optimizer)
 
     # Prepare everything
     # There is no specific order to remember, you just need to unpack the
@@ -84,6 +71,10 @@ def train_loop(config):
     )
 
     global_step = 0
+
+    if accelerator.is_main_process:
+        os.makedirs(config.output_dir, exist_ok=True)
+        accelerator.init_trackers("zizi-pink-uncond")
 
     # Now you train the model
     for epoch in range(config.num_epochs):
@@ -141,14 +132,7 @@ def train_loop(config):
             if (
                 epoch + 1
             ) % config.save_image_epochs == 0 or epoch == config.num_epochs - 1:
-                evaluate(
-                    config,
-                    epoch,
-                    pipeline,
-                    train_dataloader.dataset[0]["poses"]
-                    .unsqueeze(0)
-                    .to(accelerator.device),
-                )
+                evaluate(config, epoch, pipeline)
 
             if (
                 epoch + 1
