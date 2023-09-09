@@ -3,7 +3,8 @@ import os
 import json
 import torch
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader, Subset
+from torch.utils.data import Dataset, DataLoader, Subset, random_split
+from torch.optim.lr_scheduler import ConstantLR
 
 from torchvision import transforms
 from PIL import Image
@@ -11,9 +12,10 @@ from diffusers import DDPMScheduler
 from diffusers import DiffusionPipeline, ImagePipelineOutput
 from diffusers.optimization import get_cosine_schedule_with_warmup
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers import UNet2DConditionModel
+from diffusers import UNet2DConditionModel, UNet2DModel
 
 from dataclasses import dataclass
+
 
 @dataclass
 class TrainingConfig:
@@ -25,18 +27,31 @@ class TrainingConfig:
     num_epochs: int = 50
     gradient_accumulation_steps: int = 1
     learning_rate: float = 3e-4
-    lr_warmup_steps: int = 500
+    lr_warmup_steps: int = 50  # low because the data is uniform at the moment
     save_image_epochs: int = 1
     save_model_epochs: int = 5
-    mixed_precision: str = "fp16"  # `no` for float32, `fp16` for automatic mixed precision
+    mixed_precision: str = (
+        "no"  # `no` for float32, `fp16` for automatic mixed precision
+    )
     overwrite_output_dir: bool = True
     seed: int = 56738
 
 
 class ConditionalZiziDataset(Dataset):
-    pose_keys = ("pose_keypoints_2d", "face_keypoints_2d", "hand_left_keypoints_2d", "hand_right_keypoints_2d")
-    
-    def __init__(self, input_dir, image_size, img_dir_name="train_img", pose_dir_name="train_openpose"):
+    pose_keys = (
+        "pose_keypoints_2d",
+        "face_keypoints_2d",
+        "hand_left_keypoints_2d",
+        "hand_right_keypoints_2d",
+    )
+
+    def __init__(
+        self,
+        input_dir,
+        image_size,
+        img_dir_name="train_img",
+        pose_dir_name="train_openpose",
+    ):
         self.img_dir = input_dir + img_dir_name
         self.pose_dir = input_dir + pose_dir_name
         self.img_files = os.listdir(self.img_dir)
@@ -46,7 +61,7 @@ class ConditionalZiziDataset(Dataset):
             [
                 transforms.Resize((image_size, image_size)),
                 transforms.ToTensor(),
-                transforms.Normalize([0.5], [0.5])
+                transforms.Normalize([0.5], [0.5]),
             ]
         )
 
@@ -65,11 +80,17 @@ class ConditionalZiziDataset(Dataset):
         input_split = os.path.splitext(self.img_files[idx])
         pose_json_name = input_split[0] + "_keypoints.json"
         json_dir = os.path.join(self.pose_dir, pose_json_name)
-        with open(json_dir, 'r') as f:
+        with open(json_dir, "r") as f:
             pose_data = json.load(f)
-        pose_points = [points for key in self.pose_keys for points in pose_data['people'][-1][key]]
+
+        if len(pose_data["people"]) == 0:
+            return torch.zeros(411)
+
+        pose_points = [
+            points for key in self.pose_keys for points in pose_data["people"][-1][key]
+        ]
         return torch.tensor(pose_points)
-    
+
     def __getitem__(self, idx):
         if isinstance(idx, slice):
             # Get the start, stop, and step from the slice
@@ -78,46 +99,46 @@ class ConditionalZiziDataset(Dataset):
         input_img = self._get_img(idx)
         json_data = self._get_json(idx)
 
-        return {
-            "images": input_img,
-            "poses": json_data
-        }
+        return {"images": input_img, "poses": json_data}
 
 
 class ZiziPipeline(DiffusionPipeline):
     def __init__(self, unet_cond: UNet2DConditionModel, scheduler: DDPMScheduler):
         super().__init__()
         self.register_modules(unet_cond=unet_cond, scheduler=scheduler)
-    
+
     @torch.no_grad()
     def __call__(
         self,
         condition: torch.FloatTensor,
         batch_size: int = 1,
         generator: torch.Generator = None,
-        num_inference_steps: int = 50
+        num_inference_steps: int = 50,
     ) -> ImagePipelineOutput:
         image_shape = (
-                batch_size,
-                self.unet_cond.config.in_channels,
-                self.unet_cond.config.sample_size,
-                self.unet_cond.config.sample_size,
-            )
+            batch_size,
+            self.unet_cond.config.in_channels,
+            self.unet_cond.config.sample_size,
+            self.unet_cond.config.sample_size,
+        )
         image = randn_tensor(image_shape, generator=generator, device=self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)
 
-        condition = condition.view((1, 1, 75)).repeat((batch_size, 1, 1))
+        condition = condition.view((1, 1, 411)).repeat((batch_size, 1, 1))
 
         for t in self.progress_bar(self.scheduler.timesteps):
             model_output = self.unet_cond(image, t, condition).sample
-            image = self.scheduler.step(model_output, t, image, generator=generator).prev_sample
-        
+            image = self.scheduler.step(
+                model_output, t, image, generator=generator
+            ).prev_sample
+
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         image = self.numpy_to_pil(image)
 
         return ImagePipelineOutput(images=image)
+
 
 def get_unet(config: TrainingConfig):
     return UNet2DConditionModel(
@@ -125,9 +146,16 @@ def get_unet(config: TrainingConfig):
         in_channels=3,  # the number of input channels, 3 for RGB images
         out_channels=3,  # the number of output channels
         layers_per_block=2,  # how many ResNet layers to use per UNet block
-        encoder_hid_dim=411,
+        encoder_hid_dim=411,  # sum of all openpose 2d points
         cross_attention_dim=512,
-        block_out_channels=(128, 128, 256, 256, 512, 512),  # the number of output channels for each UNet block
+        block_out_channels=(
+            128,
+            128,
+            256,
+            256,
+            512,
+            512,
+        ),  # the number of output channels for each UNet block
         down_block_types=(
             "DownBlock2D",  # a regular ResNet downsampling block
             "DownBlock2D",
@@ -150,35 +178,70 @@ def get_unet(config: TrainingConfig):
 def get_unet_crossattn(config: TrainingConfig):
     """
     UNet with cross attn blocks instead of just self attn blocks.
-    Does not seem to work with the config below (loss stays at 1).
     """
     return UNet2DConditionModel(
-        sample_size=config.image_size,  # the target image resolution
-        in_channels=3,  # the number of input channels, 3 for RGB images
-        out_channels=3,  # the number of output channels
-        layers_per_block=2,  # how many ResNet layers to use per UNet block
+        sample_size=128,
+        in_channels=3,
+        out_channels=3,
+        layers_per_block=2,
         encoder_hid_dim=411,
         cross_attention_dim=512,
-        block_out_channels=(128, 256, 512, 512),  # the number of output channels for each UNet block
+        block_out_channels=(128, 256, 512, 512),
         down_block_types=(
-            "DownBlock2D",
-            "DownBlock2D",
+            "CrossAttnDownBlock2D",
+            "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
         up_block_types=(
             "UpBlock2D",
             "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+        ),
+    ).to("cuda")
+
+
+def get_unet_uncond(config: TrainingConfig):
+    return UNet2DModel(
+        sample_size=config.image_size,  # the target image resolution
+        in_channels=3,  # the number of input channels, 3 for RGB images
+        out_channels=3,  # the number of output channels
+        layers_per_block=2,  # how many ResNet layers to use per UNet block
+        block_out_channels=(
+            128,
+            128,
+            256,
+            256,
+            512,
+            512,
+        ),  # the number of output channels for each UNet block
+        down_block_types=(
+            "DownBlock2D",  # a regular ResNet downsampling block
+            "DownBlock2D",
+            "DownBlock2D",
+            "DownBlock2D",
+            "AttnDownBlock2D",  # a ResNet downsampling block with spatial self-attention
+            "DownBlock2D",
+        ),
+        up_block_types=(
+            "UpBlock2D",  # a regular ResNet upsampling block
+            "AttnUpBlock2D",  # a ResNet upsampling block with spatial self-attention
+            "UpBlock2D",
+            "UpBlock2D",
             "UpBlock2D",
             "UpBlock2D",
         ),
     )
 
+
 def get_ddpm():
     return DDPMScheduler(num_train_timesteps=1000)
 
+
 def get_adamw(config: TrainingConfig, model: UNet2DConditionModel):
     return torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
+
 
 def get_lr_scheduler(config: TrainingConfig, optimizer, dataloader):
     return get_cosine_schedule_with_warmup(
@@ -187,10 +250,38 @@ def get_lr_scheduler(config: TrainingConfig, optimizer, dataloader):
         num_training_steps=(len(dataloader) * config.num_epochs),
     )
 
+
+def get_const_lr(config: TrainingConfig, optimizer):
+    return ConstantLR(optimizer, factor=1)
+
+
+def get_dataset(config: TrainingConfig):
+    return ConditionalZiziDataset(config.input_dir, config.image_size)
+
+
+def get_split_loaders(config: TrainingConfig):
+    dataset = ConditionalZiziDataset(config.input_dir, config.image_size)
+    train_size = int(0.8 * len(dataset))
+    valid_size = int(0.1 * len(dataset))
+    train_dataset, valid_dataset = random_split(dataset, [train_size, valid_size])
+    train_loader = DataLoader(
+        train_dataset, batch_size=config.train_batch_size, shuffle=True
+    )
+    valid_loader = DataLoader(
+        valid_dataset, batch_size=config.eval_batch_size, shuffle=False
+    )
+    return train_loader, valid_loader
+
+
 def get_dataloader(config: TrainingConfig):
     dataset = ConditionalZiziDataset(config.input_dir, config.image_size)
     return DataLoader(dataset, batch_size=config.train_batch_size, shuffle=True)
 
+
 def get_subset_dataloader(config: TrainingConfig, count=8):
     dataset = ConditionalZiziDataset(config.input_dir, config.image_size)
-    return DataLoader(Subset(dataset, range(0,count)), batch_size=config.train_batch_size, shuffle=True)
+    return DataLoader(
+        Subset(dataset, range(0, count)),
+        batch_size=config.train_batch_size,
+        shuffle=True,
+    )
