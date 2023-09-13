@@ -1,0 +1,6 @@
+[submodule "openpose"]
+	path = openpose
+	url = git@github.com:CMU-Perceptual-Computing-Lab/openpose.git
+[submodule "vid2vid"]
+	path = vid2vid
+	url = git@github.com:jakeelwes/vid2vid.git
