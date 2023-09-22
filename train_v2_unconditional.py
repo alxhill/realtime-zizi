@@ -16,8 +16,8 @@ from utils import make_grid
 
 config = TrainingConfig(
     "data/pink-me/",
-    "output/pink-256-unconditional/",
-    image_size=256,
+    "output/pink-128-unconditional/",
+    image_size=128,
     train_batch_size=8,
     save_model_epochs=100,
     lr_warmup_steps=0,
@@ -59,7 +59,7 @@ def train_loop(config):
     train_dataloader = get_subset_dataloader(config, 16)
 
     model = get_unet_uncond(config)
-    noise_scheduler = get_ddpm()
+    noise_scheduler = get_ddpm_squaredcos()
     optimizer = get_adamw(config, model)
     lr_scheduler = get_const_lr(config, optimizer)
 

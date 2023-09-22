@@ -72,8 +72,7 @@ class ConditionalZiziDataset(Dataset):
         return os.path.join(self.img_dir, self.img_files[idx])
 
     def _get_img(self, idx):
-        img_dir = self._get
-        _img_path(idx)
+        img_dir = self._get_img_path(idx)
         with Image.open(img_dir) as img:
             return self.preprocess(img.convert("RGB"))
 
